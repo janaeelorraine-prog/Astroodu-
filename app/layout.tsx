@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { Cinzel, Cinzel_Decorative, Cormorant_Garamond } from 'next/font/google'
 import './globals.css'
 import TempleChrome from '@/components/TempleChrome'
+import AuthProvider from '@/components/AuthProvider'
+import SessionBar from '@/components/SessionBar'
 
 const cinzel = Cinzel({
   subsets: ['latin'],
@@ -36,7 +38,10 @@ export default function RootLayout({
     >
       <body>
         <TempleChrome />
-        <main className="relative z-10">{children}</main>
+        <AuthProvider>
+          <SessionBar />
+          <main className="relative z-10">{children}</main>
+        </AuthProvider>
       </body>
     </html>
   )
