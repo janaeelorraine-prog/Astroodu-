@@ -20,7 +20,15 @@ const SUPABASE_ANON_KEY =
 
 let _client: SupabaseClient | null = null
 function getClient(): SupabaseClient {
-  if (!_client) _client = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  if (!_client)
+    _client = createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        flowType: 'pkce',
+        detectSessionInUrl: false,
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+    })
   return _client
 }
 
