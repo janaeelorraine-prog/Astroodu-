@@ -1,0 +1,145 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gold: #c9982f;
+  --gold-light: #f0d27a;
+  --cream: #f6eccb;
+  --ink: #0a0712;
+  --forest: #16321f;
+}
+
+html,
+body {
+  background: var(--ink);
+  color: var(--cream);
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: var(--font-cormorant), Georgia, serif;
+  overflow-x: hidden;
+}
+
+/* ---------- Cosmic landscape backdrop, breathing ---------- */
+.temple-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(60% 50% at 50% 18%, rgba(201, 152, 47, 0.18), transparent 70%),
+    radial-gradient(90% 70% at 50% 120%, rgba(22, 50, 31, 0.85), transparent 75%),
+    radial-gradient(120% 90% at 50% -10%, #120c22 0%, #0a0712 55%, #050308 100%);
+  animation: breathe 14s ease-in-out infinite;
+}
+
+.temple-stars {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(246, 236, 203, 0.7), transparent),
+    radial-gradient(1px 1px at 70% 20%, rgba(246, 236, 203, 0.5), transparent),
+    radial-gradient(1.5px 1.5px at 40% 70%, rgba(240, 210, 122, 0.6), transparent),
+    radial-gradient(1px 1px at 85% 60%, rgba(246, 236, 203, 0.5), transparent),
+    radial-gradient(1px 1px at 55% 45%, rgba(246, 236, 203, 0.45), transparent),
+    radial-gradient(1.5px 1.5px at 10% 80%, rgba(240, 210, 122, 0.5), transparent);
+  opacity: 0.8;
+  animation: twinkle 9s ease-in-out infinite alternate;
+}
+
+@keyframes breathe {
+  0%, 100% { filter: brightness(0.92) saturate(1); }
+  50% { filter: brightness(1.08) saturate(1.15); }
+}
+@keyframes twinkle {
+  from { opacity: 0.55; }
+  to { opacity: 0.9; }
+}
+
+/* ---------- Drifting gold motes ---------- */
+.mote {
+  position: fixed;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(240, 210, 122, 0.9), rgba(201, 152, 47, 0) 70%);
+  pointer-events: none;
+  z-index: 0;
+  animation: drift linear infinite;
+}
+@keyframes drift {
+  0% { transform: translateY(20vh) translateX(0) scale(0.8); opacity: 0; }
+  10% { opacity: 0.9; }
+  90% { opacity: 0.7; }
+  100% { transform: translateY(-110vh) translateX(40px) scale(1.1); opacity: 0; }
+}
+
+/* ---------- Ornate gold filigree corners ---------- */
+.filigree {
+  position: fixed;
+  width: 140px;
+  height: 140px;
+  z-index: 5;
+  opacity: 0.85;
+  pointer-events: none;
+}
+.filigree.tl { top: 8px; left: 8px; }
+.filigree.tr { top: 8px; right: 8px; transform: scaleX(-1); }
+.filigree.bl { bottom: 8px; left: 8px; transform: scaleY(-1); }
+.filigree.br { bottom: 8px; right: 8px; transform: scale(-1, -1); }
+
+/* ---------- Carved gold wordmark ---------- */
+.wordmark {
+  font-family: var(--font-cinzel-dec), serif;
+  letter-spacing: 0.08em;
+  background: linear-gradient(180deg, #fbe8a6 0%, var(--gold-light) 35%, var(--gold) 70%, #8a6516 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+  filter: drop-shadow(0 2px 10px rgba(201, 152, 47, 0.35));
+}
+
+.sacred-line {
+  font-family: var(--font-cinzel), serif;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  color: var(--gold-light);
+  opacity: 0.78;
+}
+
+/* ---------- The center orb / glowing iris ---------- */
+.orb {
+  position: relative;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: transform 0.5s ease, filter 0.5s ease;
+}
+.orb:hover { transform: scale(1.04); }
+.orb-iris {
+  animation: irisGlow 6s ease-in-out infinite;
+}
+@keyframes irisGlow {
+  0%, 100% { filter: drop-shadow(0 0 24px rgba(240, 210, 122, 0.55)); }
+  50% { filter: drop-shadow(0 0 48px rgba(240, 210, 122, 0.95)); }
+}
+.orb-ring {
+  animation: spin 60s linear infinite;
+  transform-origin: center;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- Doorways ---------- */
+.doorway {
+  position: relative;
+  cursor: pointer;
+  transition: transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.45s ease;
+}
+.doorway:hover { transform: translateY(-6px) scale(1.05); }
+.doorway-arch {
+  filter: drop-shadow(0 0 14px var(--flag, var(--gold)));
+}
