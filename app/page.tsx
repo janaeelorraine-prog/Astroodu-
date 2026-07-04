@@ -54,6 +54,13 @@ export default function Home() {
         <p className="mt-3 text-cream/70 font-cinzel tracking-[0.25em] text-xs uppercase">
           The Temple
         </p>
+        <Link
+          href="/school"
+          className="inline-flex items-center gap-2 mt-6 px-6 py-2.5 rounded-sm font-cinzel text-xs tracking-[0.2em] uppercase"
+          style={{ border: '1px solid #C9982F', color: '#F0D27A', background: 'rgba(201,152,47,0.08)' }}
+        >
+          ✦ Enter the School →
+        </Link>
       </header>
 
       {/* The center orb — glowing iris / Wheel */}
