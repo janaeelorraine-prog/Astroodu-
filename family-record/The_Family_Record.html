@@ -1414,8 +1414,8 @@ window.HISTORY = window.HISTORY || [
 
 </script>
 <script id="fr-baked-edits">
-window.FAMILY_EDITS = window.FAMILY_EDITS || null;
-window.FAMILY_PHOTO_EDITS = window.FAMILY_PHOTO_EDITS || null;
+window.FAMILY_EDITS = {"people":{"timothysharp_msfei7dg2e0":{"name":"Timothy Sharp","side":"pat","dates":"","place":"","rel":"uncle","life":"lived in columbus ohio.","known":"T-Bone","living":true,"facts":[],"flags":[]},"dortheasharp_msfejrjh5pf":{"name":"Dorthea Sharp","side":"pat","dates":"","place":"","rel":"aunt","life":"","known":"","facts":[],"flags":[]},"tashasharp_msfel8wr5":{"name":"Tasha Sharp","side":"pat","dates":"","place":"","rel":"aunt","life":"","known":"","facts":[],"flags":[]},"cornellsharp_msfelzb41x6":{"name":"Cornell Sharp","side":"pat","dates":"","place":"","rel":"uncle","life":"","known":"","facts":[],"flags":[]},"orville3":{"name":"Orville Sharp III","side":"pat","dates":"Living","place":"","rel":"Father","life":"Son of Dorothy Lamour Coles Sharp. Carrier of the third Orville. He lived for a time in Brooklyn, New York, with his mother","known":"","living":true},"orvillesharpiiii_msfepk7u2d3":{"name":"Orville Sharp IIII","side":"pat","dates":"March 23rd 1990","place":"Columbus, OH","rel":"brother","life":"","known":"OJ","living":true,"facts":[],"flags":[]},"desireesharp_msfer64e6o5":{"name":"Desiree Sharp","side":"pat","dates":"September 26th 1986","place":"Columbus, OH","rel":"Eldest sister","life":"","known":"Des","facts":[],"flags":[],"living":true},"shareesharp_msfesd8d6dv":{"name":"Sharee Sharp","side":"pat","dates":"July 26th 1989","place":"Columbus ohio","rel":"sister","life":"","known":"rae rae","facts":[],"flags":[],"living":true},"onaeesharp_msfetlo1614":{"name":"Onaee Sharp","side":"pat","dates":"March 23rd 1988","place":"Columbus OH","rel":"sister","life":"","known":"nae","living":true,"facts":[],"flags":[]},"janaeesharp_msfev36q62h":{"name":"Janaee Sharp","side":"pat","dates":"March 23rd 1998","place":"Columbus, OH","rel":"me","life":"","known":"naenae","facts":[],"flags":[],"living":true},"serenity_msfew02m5pq":{"name":"Serenity Sharp","side":"pat","dates":"","place":"Cleveland, OH","rel":"half sister","life":"","known":"","facts":[],"flags":[],"living":true},"karismaaaliyahve_msfextxi49b":{"name":"Karisma Aaliyah Venus Peterson","side":"pat","dates":"","place":"Columbus, OH","rel":"Daughter","life":"","known":"","living":true,"facts":[],"flags":[]}},"removed":[],"placements":[{"branchId":"sharp","genIndex":3,"personId":"timothysharp_msfei7dg2e0"},{"branchId":"sharp","genIndex":3,"personId":"dortheasharp_msfejrjh5pf"},{"branchId":"sharp","genIndex":3,"personId":"tashasharp_msfel8wr5"},{"branchId":"sharp","genIndex":3,"personId":"cornellsharp_msfelzb41x6"},{"branchId":"sharp","genIndex":4,"personId":"orvillesharpiiii_msfepk7u2d3"},{"branchId":"sharp","genIndex":4,"personId":"desireesharp_msfer64e6o5"},{"branchId":"sharp","genIndex":4,"personId":"shareesharp_msfesd8d6dv"},{"branchId":"sharp","genIndex":4,"personId":"onaeesharp_msfetlo1614"},{"branchId":"sharp","genIndex":4,"personId":"janaeesharp_msfev36q62h"},{"branchId":"sharp","genIndex":4,"personId":"serenity_msfew02m5pq"},{"branchId":"sharp","genIndex":5,"personId":"karismaaaliyahve_msfextxi49b"}],"newGens":[{"branchId":"sharp","id":"gen_msfepk7u","label":"Children of Orville Sharp III","note":""},{"branchId":"sharp","id":"gen_msfextxi","label":"Children of Janaee Sharp","note":""}],"history":null};
+window.FAMILY_PHOTO_EDITS = {};
 </script>
 <script id="fr-merge-shim">
 /* ============================================================
@@ -4138,7 +4138,7 @@ class Component extends DCLogic {
           return { label: g.label, note: g.note, genIndex: gi, isNew: false, people: (g.people || []).slice() };
         });
         (edits.newGens || []).filter(function (g) { return g.branchId === b.id; }).forEach(function (g) {
-          gens.push({ label: g.label, note: g.note, genIndex: gens.length, isNew: true, people: [] });
+          gens.push({ label: g.label, note: g.note, genIndex: gens.length, isNew: true, parentId: g.parentId || null, people: [] });
         });
         (edits.placements || []).filter(function (p) { return p.branchId === b.id; }).forEach(function (p) {
           var gen = gens[p.genIndex];
@@ -4209,7 +4209,8 @@ class Component extends DCLogic {
       }
       function openChild(branch, gen, person) {
         setForm({ mode: "child", title: "Add a child of " + person.name, branchId: branch.id,
-                  parentGenIndex: gen.genIndex, parentName: person.name, personId: null, draft: blankDraft(person.side || branch.side) });
+                  parentGenIndex: gen.genIndex, parentId: person.id, parentName: person.name,
+                  personId: null, draft: blankDraft(person.side || branch.side) });
       }
       function openEdit(branch, gen, person) {
         var m = mergedPerson(edits, person.id);
@@ -4226,13 +4227,20 @@ class Component extends DCLogic {
         var branchIdT = f.branchId, genIndex = f.genIndex;
 
         if (f.mode === "child") {
+          // Each parent gets their OWN "Children of <name>" group — never reuse
+          // another person's children group just because it sits below them.
           var br = structure(next).filter(function (b) { return b.id === branchIdT; })[0];
-          var childIdx = f.parentGenIndex + 1;
-          if (!br.gens[childIdx]) {
-            next.newGens.push({ branchId: branchIdT, id: "gen_" + Date.now().toString(36), label: "Children of " + f.parentName, note: "" });
-            childIdx = br.gens.length;
+          var target = "Children of " + f.parentName;
+          var own = br.gens.filter(function (g) {
+            return (g.parentId && g.parentId === f.parentId) || (g.isNew && g.label === target);
+          })[0];
+          if (own) {
+            genIndex = own.genIndex;
+          } else {
+            next.newGens.push({ branchId: branchIdT, id: "gen_" + Date.now().toString(36),
+                                label: target, note: "", parentId: f.parentId || null });
+            genIndex = br.gens.length; // appended after the current generations
           }
-          genIndex = childIdx;
         }
 
         var prev = f.mode === "edit" ? mergedPerson(edits, id) : {};

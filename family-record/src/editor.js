@@ -36,7 +36,7 @@
           return { label: g.label, note: g.note, genIndex: gi, isNew: false, people: (g.people || []).slice() };
         });
         (edits.newGens || []).filter(function (g) { return g.branchId === b.id; }).forEach(function (g) {
-          gens.push({ label: g.label, note: g.note, genIndex: gens.length, isNew: true, people: [] });
+          gens.push({ label: g.label, note: g.note, genIndex: gens.length, isNew: true, parentId: g.parentId || null, people: [] });
         });
         (edits.placements || []).filter(function (p) { return p.branchId === b.id; }).forEach(function (p) {
           var gen = gens[p.genIndex];
@@ -107,7 +107,8 @@
       }
       function openChild(branch, gen, person) {
         setForm({ mode: "child", title: "Add a child of " + person.name, branchId: branch.id,
-                  parentGenIndex: gen.genIndex, parentName: person.name, personId: null, draft: blankDraft(person.side || branch.side) });
+                  parentGenIndex: gen.genIndex, parentId: person.id, parentName: person.name,
+                  personId: null, draft: blankDraft(person.side || branch.side) });
       }
       function openEdit(branch, gen, person) {
         var m = mergedPerson(edits, person.id);
@@ -124,13 +125,20 @@
         var branchIdT = f.branchId, genIndex = f.genIndex;
 
         if (f.mode === "child") {
+          // Each parent gets their OWN "Children of <name>" group — never reuse
+          // another person's children group just because it sits below them.
           var br = structure(next).filter(function (b) { return b.id === branchIdT; })[0];
-          var childIdx = f.parentGenIndex + 1;
-          if (!br.gens[childIdx]) {
-            next.newGens.push({ branchId: branchIdT, id: "gen_" + Date.now().toString(36), label: "Children of " + f.parentName, note: "" });
-            childIdx = br.gens.length;
+          var target = "Children of " + f.parentName;
+          var own = br.gens.filter(function (g) {
+            return (g.parentId && g.parentId === f.parentId) || (g.isNew && g.label === target);
+          })[0];
+          if (own) {
+            genIndex = own.genIndex;
+          } else {
+            next.newGens.push({ branchId: branchIdT, id: "gen_" + Date.now().toString(36),
+                                label: target, note: "", parentId: f.parentId || null });
+            genIndex = br.gens.length; // appended after the current generations
           }
-          genIndex = childIdx;
         }
 
         var prev = f.mode === "edit" ? mergedPerson(edits, id) : {};

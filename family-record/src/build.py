@@ -9,11 +9,14 @@ Rebuild "The Family Record" as ONE plain, self-contained, editable HTML file.
   edit or remove people, and download an updated single file. Edits also
   auto-save in the browser (localStorage) so nothing is lost on reload.
 """
-import re, json, base64, gzip, sys, pathlib
+import re, json, base64, gzip, sys, os, pathlib
 
 SRC = "/root/.claude/uploads/e1556964-b9e7-5a0a-a3ec-bbf1b6a0b802/5fcd6e25-The_Family_Record_one_file.html"
 OUT = sys.argv[1] if len(sys.argv) > 1 else "The_Family_Record.html"
 HERE = pathlib.Path(__file__).parent
+# Optionally bake previously-saved edits into the fresh build (preserves a
+# person's existing additions when only the editor code changed).
+EDITS_FILE = os.environ.get("FR_EDITS_FILE")
 
 orig = open(SRC, encoding="utf-8").read()
 
@@ -125,8 +128,9 @@ doc = """<!doctype html>
     # window.FAMILY_EDITS / FAMILY_PHOTO_EDITS are (re)written into this exact
     # block whenever you press "Download updated record", baking edits in.
     edits_placeholder=scr(
-        "window.FAMILY_EDITS = window.FAMILY_EDITS || null;\n"
-        "window.FAMILY_PHOTO_EDITS = window.FAMILY_PHOTO_EDITS || null;",
+        safe_js(open(EDITS_FILE, encoding="utf-8").read().strip()) if EDITS_FILE else
+        ("window.FAMILY_EDITS = window.FAMILY_EDITS || null;\n"
+         "window.FAMILY_PHOTO_EDITS = window.FAMILY_PHOTO_EDITS || null;"),
         id="fr-baked-edits"),
     shim=scr(merge_shim, id="fr-merge-shim"),
     runtime=scr(runtime_src),
