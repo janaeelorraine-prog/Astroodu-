@@ -51,7 +51,48 @@
                      isNew: !isBasePerson(id), removed: (edits.removed || []).indexOf(id) !== -1 };
           });
         });
+        orderGens(gens);
         return { id: b.id, name: b.name, side: b.side, road: b.road, gens: gens };
+      });
+    }
+
+    // Sort a branch's generations by depth so the editor list mirrors the record.
+    function orderGens(gens) {
+      if (gens.length < 2) return;
+      function genOfPerson(pid) {
+        for (var i = 0; i < gens.length; i++)
+          if ((gens[i].people || []).some(function (p) { return p.id === pid; })) return gens[i];
+        return null;
+      }
+      gens.forEach(function (g, i) {
+        g.__depth = g.isNew ? undefined : i;
+        g.__ord = i;
+      });
+      for (var pass = 0; pass < gens.length + 2; pass++) {
+        gens.forEach(function (g) {
+          if (g.__depth !== undefined || !g.parentId) return;
+          var pg = genOfPerson(g.parentId);
+          if (pg && pg.__depth !== undefined) g.__depth = pg.__depth + 1;
+        });
+      }
+      var maxd = 0; gens.forEach(function (g) { if (g.__depth !== undefined) maxd = Math.max(maxd, g.__depth); });
+      gens.forEach(function (g) { if (g.__depth === undefined) g.__depth = maxd + 1; });
+      function pathOf(g) {
+        if (g.__path) return g.__path;
+        if (!g.isNew) return (g.__path = [g.__ord]);
+        if (g.parentId) {
+          var pg = genOfPerson(g.parentId);
+          var idx = pg ? pg.people.map(function (p) { return p.id; }).indexOf(g.parentId) : 999;
+          return (g.__path = (pg ? pathOf(pg) : []).concat([idx]));
+        }
+        return (g.__path = [999]);
+      }
+      gens.forEach(pathOf);
+      gens.sort(function (a, c) {
+        if (a.__depth !== c.__depth) return a.__depth - c.__depth;
+        var pa = a.__path, pc = c.__path, n = Math.max(pa.length, pc.length);
+        for (var i = 0; i < n; i++) { var x = pa[i] == null ? -1 : pa[i], y = pc[i] == null ? -1 : pc[i]; if (x !== y) return x - y; }
+        return a.__ord - c.__ord;
       });
     }
 
@@ -89,13 +130,14 @@
         flashT.current = setTimeout(function () { setFlash(""); }, 1400);
       }
       function commit(nextEdits, nextPhotos) {
+        nextEdits.updatedAt = Date.now(); // newest-wins when the file is reopened elsewhere
         setEdits(nextEdits);
         if (nextPhotos) setPhotoEdits(nextPhotos);
         persist(nextEdits, nextPhotos);
       }
 
       function blankDraft(side) {
-        return { name: "", known: "", dates: "", place: "", rel: "", life: "", living: false,
+        return { name: "", known: "", dates: "", place: "", rel: "", life: "", status: "unknown",
                  gap: false, addStory: "", addSource: "", photo: "", side: side || "pat" };
       }
       function openAdd(branch, genIndex, title) {
@@ -114,7 +156,8 @@
         var m = mergedPerson(edits, person.id);
         setForm({ mode: "edit", title: "Edit " + (m.name || person.name), branchId: branch.id, genIndex: gen.genIndex, personId: person.id,
           draft: { name: m.name || "", known: m.known || "", dates: m.dates || "", place: m.place || "", rel: m.rel || "",
-                   life: m.life || "", living: !!m.living, gap: !!m.gap, addStory: "", addSource: "", photo: "", side: m.side || branch.side } });
+                   life: m.life || "", status: m.living ? "living" : (m.deceased ? "deceased" : "unknown"),
+                   gap: !!m.gap, addStory: "", addSource: "", photo: "", side: m.side || branch.side } });
       }
 
       function saveForm() {
@@ -145,7 +188,8 @@
         var obj = { name: d.name.trim(), side: d.side || "pat", dates: d.dates.trim(),
                     place: d.place.trim(), rel: d.rel.trim(), life: d.life.trim() };
         obj.known = d.known.trim();
-        if (d.living) obj.living = true;
+        obj.living = d.status === "living";
+        obj.deceased = d.status === "deceased";
         if (d.gap) obj.gap = true;
         if (f.mode !== "edit") { obj.facts = []; obj.flags = []; }
         var addS = parseStories(d.addStory); if (addS.length) obj.stories = (prev.stories || []).concat(addS);
@@ -302,8 +346,17 @@
             field("Life / notes (optional)", "life", { area: true, rows: 4, ph: "Anything you know — where they lived, their work, family, a story in a sentence or two." }),
             field("Add a memory (optional)", "addStory", { area: true, rows: 2, ph: "One per line. Saved as family testimony." }),
             field("Add a source link (optional)", "addSource", { area: true, rows: 2, ph: "One per line. “Label | https://…” or just a link." }),
+            h("div", { style: { margin: "6px 0 10px" } },
+              h("div", { style: lbl() }, "Status"),
+              h("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap" } },
+                [["living", "Living"], ["deceased", "Deceased"], ["unknown", "Unknown"]].map(function (o) {
+                  var on = d.status === o[0];
+                  var c = o[0] === "living" ? GREEN : o[0] === "deceased" ? "#6b5d47" : MUTE;
+                  return h("button", { key: o[0], onClick: function () { set("status", o[0]); },
+                    style: { all: "unset", cursor: "pointer", fontFamily: "Archivo,sans-serif", fontSize: "12px", padding: "6px 14px",
+                      borderRadius: "999px", color: on ? "#fff" : c, background: on ? c : "transparent", border: "1px solid " + c } }, o[1]);
+                }))),
             h("div", { style: { display: "flex", gap: "18px", alignItems: "center", flexWrap: "wrap", margin: "6px 0 14px" } },
-              h("label", { style: chk() }, h("input", { type: "checkbox", checked: d.living, onChange: function (e) { set("living", e.target.checked); } }), " Living"),
               h("label", { style: chk() }, h("input", { type: "checkbox", checked: d.gap, onChange: function (e) { set("gap", e.target.checked); } }), " Not yet found / a gap"),
               h("button", { onClick: pickPhoto, style: miniBtn() }, d.photo ? "✓ Photo chosen — change" : "Add a photo"),
               d.photo ? h("img", { src: d.photo, style: { width: "34px", height: "34px", objectFit: "cover", borderRadius: "50%", border: "1px solid " + LINE } }) : null),

@@ -74,6 +74,13 @@ visual = xdc_inner.split('</helmet>', 1)[1]
 # component script (the DCLogic class) sits after </x-dc>
 comp = re.search(r'(<script type="text/x-dc"[^>]*>.*?</script>)', template, re.S).group(1)
 
+# Add an "In memoriam" badge for people marked deceased (living=false, deceased=true).
+_living_line = 'if(p.living) badges.push({text:"Living", color:"#4f7440", line:"rgba(79,116,64,.55)"});'
+assert _living_line in comp, "living-badge line not found — template changed"
+comp = comp.replace(
+    _living_line,
+    _living_line + '\n    if(!p.living && p.deceased) badges.push({text:"In memoriam", color:"#6b5d47", line:"#d8c9ab"});')
+
 def safe_js(s):
     # A literal </script inside inline JS closes the tag early. Neutralise it —
     # JS reads <\/script identically inside strings/regex, HTML won't close on it.
