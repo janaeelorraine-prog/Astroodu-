@@ -51,6 +51,45 @@ photos_src   = text_of(U_PHOTOS)
 react_src    = text_of(U_REACT)
 reactdom_src = text_of(U_REACTDOM)
 
+# --- Fix a latent renderer bug: cssToObj() splits inline `style` on every ";",
+#     which severs data: URIs at ";base64," — truncating EVERY photo to an
+#     invalid url("data:image/jpeg"). Replace it with a splitter that ignores
+#     ";" inside parentheses or quotes, so background-image data URIs survive.
+_css_old = '''  function cssToObj(css) {
+    const o = {};
+    for (const decl of css.split(";")) {
+      const i = decl.indexOf(":");
+      if (i < 0) continue;
+      const prop = decl.slice(0, i).trim();
+      o[prop.startsWith("--") ? prop : kebabToCamel(prop)] = decl.slice(i + 1).trim();
+    }
+    return o;
+  }'''
+_css_new = '''  function cssToObj(css) {
+    const o = {};
+    const decls = [];
+    let depth = 0, quote = "", start = 0;
+    for (let k = 0; k < css.length; k++) {
+      const ch = css[k];
+      if (quote) { if (ch === quote) quote = ""; }
+      else if (ch === '"' || ch === "'") quote = ch;
+      else if (ch === "(") depth++;
+      else if (ch === ")") depth = depth > 0 ? depth - 1 : 0;
+      else if (ch === ";" && depth === 0) { decls.push(css.slice(start, k)); start = k + 1; }
+    }
+    decls.push(css.slice(start));
+    for (const decl of decls) {
+      const i = decl.indexOf(":");
+      if (i < 0) continue;
+      const prop = decl.slice(0, i).trim();
+      if (!prop) continue;
+      o[prop.startsWith("--") ? prop : kebabToCamel(prop)] = decl.slice(i + 1).trim();
+    }
+    return o;
+  }'''
+assert _css_old in runtime_src, "cssToObj not found — runtime changed"
+runtime_src = runtime_src.replace(_css_old, _css_new)
+
 # ---- font data: URIs ----
 def data_uri(uuid):
     mime, raw = res[uuid]

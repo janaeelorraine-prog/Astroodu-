@@ -136,9 +136,17 @@
         persist(nextEdits, nextPhotos);
       }
 
+      function currentPhotoOf(id) {
+        if (photoEdits[id]) return photoEdits[id];
+        var drops = {};
+        try { drops = JSON.parse(localStorage.getItem("familyRecord.drops") || "{}"); } catch (e) {}
+        if (drops[id]) return drops[id];
+        var bp = (base().people[id] || {}).photo;
+        return (bp && /^data:image/.test(bp)) ? bp : "";
+      }
       function blankDraft(side) {
         return { name: "", known: "", dates: "", place: "", rel: "", life: "", status: "unknown",
-                 gap: false, addStory: "", addSource: "", photo: "", side: side || "pat" };
+                 gap: false, addStory: "", addSource: "", photo: "", currentPhoto: "", removePhoto: false, side: side || "pat" };
       }
       function openAdd(branch, genIndex, title) {
         setForm({ mode: "add", title: title, branchId: branch.id, genIndex: genIndex, personId: null, draft: blankDraft(branch.side) });
@@ -157,7 +165,8 @@
         setForm({ mode: "edit", title: "Edit " + (m.name || person.name), branchId: branch.id, genIndex: gen.genIndex, personId: person.id,
           draft: { name: m.name || "", known: m.known || "", dates: m.dates || "", place: m.place || "", rel: m.rel || "",
                    life: m.life || "", status: m.living ? "living" : (m.deceased ? "deceased" : "unknown"),
-                   gap: !!m.gap, addStory: "", addSource: "", photo: "", side: m.side || branch.side } });
+                   gap: !!m.gap, addStory: "", addSource: "", photo: "", currentPhoto: currentPhotoOf(person.id),
+                   removePhoto: false, side: m.side || branch.side } });
       }
 
       function saveForm() {
@@ -198,7 +207,10 @@
         next.people[id] = Object.assign({}, next.people[id] || {}, obj);
         next.removed = (next.removed || []).filter(function (x) { return x !== id; });
         if (f.mode !== "edit") next.placements.push({ branchId: branchIdT, genIndex: genIndex, personId: id });
-        if (d.photo) nextPhotos[id] = d.photo;
+        // photos live only in the photo layer (never inline in the person, to
+        // keep edits small); photo:null overrides a base portrait when removed.
+        if (d.photo) { nextPhotos[id] = d.photo; if (next.people[id].photo) next.people[id].photo = null; }
+        else if (d.removePhoto) { delete nextPhotos[id]; next.people[id].photo = null; }
 
         commit(next, nextPhotos);
         setForm(null);
@@ -235,8 +247,13 @@
           }
           var be = docEl.querySelector("#fr-baked-edits");
           if (be) {
+            // fold in any photos added by dragging onto a portrait/gallery frame
+            // (the record's own photo system), so they survive the download too
+            var drops = {};
+            try { drops = JSON.parse(localStorage.getItem("familyRecord.drops") || "{}"); } catch (e) {}
+            var allPhotos = Object.assign({}, drops, photoEdits);
             var body = "window.FAMILY_EDITS = " + JSON.stringify(edits) + ";\n"
-                     + "window.FAMILY_PHOTO_EDITS = " + JSON.stringify(photoEdits) + ";";
+                     + "window.FAMILY_PHOTO_EDITS = " + JSON.stringify(allPhotos) + ";";
             be.textContent = body.replace(/<\/script/gi, "<\\/script");
           }
           var ui = docEl.querySelector("#fr-editor-ui"); if (ui) ui.remove();
@@ -330,9 +347,15 @@
         }
         function pickPhoto() {
           var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
-          inp.onchange = function () { var file = inp.files[0]; if (!file) return; var r = new FileReader(); r.onload = function () { set("photo", r.result); }; r.readAsDataURL(file); };
+          inp.onchange = function () {
+            var file = inp.files[0]; if (!file) return;
+            var r = new FileReader();
+            r.onload = function () { var nf = Object.assign({}, form); nf.draft = Object.assign({}, d, { photo: r.result, removePhoto: false }); setForm(nf); };
+            r.readAsDataURL(file);
+          };
           inp.click();
         }
+        var shownPhoto = d.removePhoto ? "" : (d.photo || d.currentPhoto);
         return h("div", { style: overlay(0.4), onClick: function (ev) { if (ev.target === ev.currentTarget) setForm(null); } },
           h("div", { style: formSheet() },
             h("div", { style: { fontFamily: "'Cormorant Garamond',serif", fontSize: "22px", color: INK, marginBottom: "4px" } }, form.title),
@@ -356,10 +379,16 @@
                     style: { all: "unset", cursor: "pointer", fontFamily: "Archivo,sans-serif", fontSize: "12px", padding: "6px 14px",
                       borderRadius: "999px", color: on ? "#fff" : c, background: on ? c : "transparent", border: "1px solid " + c } }, o[1]);
                 }))),
-            h("div", { style: { display: "flex", gap: "18px", alignItems: "center", flexWrap: "wrap", margin: "6px 0 14px" } },
-              h("label", { style: chk() }, h("input", { type: "checkbox", checked: d.gap, onChange: function (e) { set("gap", e.target.checked); } }), " Not yet found / a gap"),
-              h("button", { onClick: pickPhoto, style: miniBtn() }, d.photo ? "✓ Photo chosen — change" : "Add a photo"),
-              d.photo ? h("img", { src: d.photo, style: { width: "34px", height: "34px", objectFit: "cover", borderRadius: "50%", border: "1px solid " + LINE } }) : null),
+            h("div", { style: { margin: "6px 0 6px" } },
+              h("div", { style: lbl() }, "Photo"),
+              h("div", { style: { display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" } },
+                shownPhoto
+                  ? h("img", { src: shownPhoto, style: { width: "48px", height: "48px", objectFit: "cover", borderRadius: "50%", border: "1px solid " + LINE } })
+                  : h("div", { style: { width: "48px", height: "48px", borderRadius: "50%", border: "1px dashed " + LINE, display: "flex", alignItems: "center", justifyContent: "center", color: MUTE, fontSize: "10px", fontFamily: "Archivo,sans-serif" } }, "none"),
+                h("button", { onClick: pickPhoto, style: miniBtn() }, shownPhoto ? "Change photo" : "Choose a photo"),
+                shownPhoto ? h("button", { onClick: function () { var nf = Object.assign({}, form); nf.draft = Object.assign({}, d, { photo: "", removePhoto: true }); setForm(nf); }, style: miniBtn(RUST) }, "Remove photo") : null)),
+            h("div", { style: { display: "flex", gap: "18px", alignItems: "center", flexWrap: "wrap", margin: "10px 0 14px" } },
+              h("label", { style: chk() }, h("input", { type: "checkbox", checked: d.gap, onChange: function (e) { set("gap", e.target.checked); } }), " Not yet found / a gap")),
             h("div", { style: { display: "flex", gap: "10px", justifyContent: "flex-end", borderTop: "1px solid " + LINE, paddingTop: "14px" } },
               h("button", { onClick: function () { setForm(null); }, style: btn(MUTE, false) }, "Cancel"),
               h("button", { onClick: saveForm, style: btn(GOLD, true) }, form.mode === "edit" ? "Save changes" : "Add to the record"))));
