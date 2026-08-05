@@ -68,7 +68,14 @@ export default function Home() {
         ))}
       </section>
 
-      <footer className="mt-16 text-center">
+      <footer className="mt-16 text-center flex flex-col items-center gap-4">
+        <Link
+          href="/budget"
+          className="font-cinzel text-xs uppercase tracking-[0.22em] px-5 py-2 rounded-full transition hover:scale-105"
+          style={{ color: '#F0D27A', border: '1px solid #C9982F66' }}
+        >
+          ◈ The Ledger — Paydays &amp; Spending
+        </Link>
         <span
           className="text-[0.62rem] tracking-widest uppercase font-cinzel"
           style={{ color: live === 'live' ? '#6FA063' : live === 'fallback' ? '#C9982F' : '#8FB9C2' }}
