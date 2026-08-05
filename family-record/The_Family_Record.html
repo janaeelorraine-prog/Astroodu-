@@ -4332,7 +4332,8 @@ class Component extends DCLogic {
       }
       function blankDraft(side) {
         return { name: "", known: "", dates: "", place: "", rel: "", life: "", status: "unknown",
-                 gap: false, addStory: "", addSource: "", photo: "", currentPhoto: "", removePhoto: false, side: side || "pat" };
+                 gap: false, photo: "", currentPhoto: "", removePhoto: false, side: side || "pat",
+                 facts: [], stories: [], flags: [], sources: [] };
       }
       function openAdd(branch, genIndex, title) {
         setForm({ mode: "add", title: title, branchId: branch.id, genIndex: genIndex, personId: null, draft: blankDraft(branch.side) });
@@ -4351,8 +4352,12 @@ class Component extends DCLogic {
         setForm({ mode: "edit", title: "Edit " + (m.name || person.name), branchId: branch.id, genIndex: gen.genIndex, personId: person.id,
           draft: { name: m.name || "", known: m.known || "", dates: m.dates || "", place: m.place || "", rel: m.rel || "",
                    life: m.life || "", status: m.living ? "living" : (m.deceased ? "deceased" : "unknown"),
-                   gap: !!m.gap, addStory: "", addSource: "", photo: "", currentPhoto: currentPhotoOf(person.id),
-                   removePhoto: false, side: m.side || branch.side } });
+                   gap: !!m.gap, photo: "", currentPhoto: currentPhotoOf(person.id),
+                   removePhoto: false, side: m.side || branch.side,
+                   facts: (m.facts || []).map(function (f) { return { k: (f && f[0]) || "", v: (f && f[1]) || "" }; }),
+                   stories: (m.stories || []).map(function (s) { return { kind: s.kind === "record" ? "record" : "family", text: s.text || "" }; }),
+                   flags: (m.flags || []).map(function (t) { return { text: typeof t === "string" ? t : (t && t.text) || "" }; }),
+                   sources: (m.sources || []).map(function (s) { return { label: s.label || "", url: s.url || "" }; }) } });
       }
 
       function saveForm() {
@@ -4386,9 +4391,14 @@ class Component extends DCLogic {
         obj.living = d.status === "living";
         obj.deceased = d.status === "deceased";
         if (d.gap) obj.gap = true;
-        if (f.mode !== "edit") { obj.facts = []; obj.flags = []; }
-        var addS = parseStories(d.addStory); if (addS.length) obj.stories = (prev.stories || []).concat(addS);
-        var addU = parseSources(d.addSource); if (addU.length) obj.sources = (prev.sources || []).concat(addU);
+        // full, editable content — the person's whole write-up in their words
+        obj.facts = (d.facts || []).map(function (f) { return [String(f.k || "").trim(), String(f.v || "").trim()]; })
+          .filter(function (f) { return f[0] || f[1]; });
+        obj.flags = (d.flags || []).map(function (f) { return String(f.text || "").trim(); }).filter(Boolean);
+        obj.stories = (d.stories || []).map(function (s) { return { kind: s.kind === "record" ? "record" : "family", text: String(s.text || "").trim() }; })
+          .filter(function (s) { return s.text; });
+        obj.sources = (d.sources || []).map(function (s) { return { label: String(s.label || "").trim(), url: String(s.url || "").trim() }; })
+          .filter(function (s) { return s.label || s.url; });
 
         next.people[id] = Object.assign({}, next.people[id] || {}, obj);
         next.removed = (next.removed || []).filter(function (x) { return x !== id; });
@@ -4531,6 +4541,28 @@ class Component extends DCLogic {
               ? h("textarea", { value: d[k], onChange: function (ev) { set(k, ev.target.value); }, rows: opts.rows || 3, placeholder: opts.ph || "", style: input(true) })
               : h("input", { value: d[k], onChange: function (ev) { set(k, ev.target.value); }, placeholder: opts.ph || "", style: input(false) }));
         }
+        // an editable list of rows (facts, stories, flags, sources)
+        function listBlock(title, key, fields, addLabel, hint) {
+          var arr = d[key] || [];
+          function update(na) { var nf = Object.assign({}, form); nf.draft = Object.assign({}, d); nf.draft[key] = na; setForm(nf); }
+          function setCell(idx, fk, val) { update(arr.map(function (rw, i) { if (i !== idx) return rw; var c = Object.assign({}, rw); c[fk] = val; return c; })); }
+          function removeRow(idx) { update(arr.filter(function (_, i) { return i !== idx; })); }
+          function addRow() { var e = {}; fields.forEach(function (fl) { e[fl.k] = fl.def || ""; }); update(arr.concat([e])); }
+          return h("div", { style: { margin: "6px 0 14px" } },
+            h("div", { style: lbl() }, title),
+            hint ? h("div", { style: { fontSize: "11.5px", color: MUTE, marginBottom: "6px" } }, hint) : null,
+            arr.map(function (rw, idx) {
+              return h("div", { key: idx, style: { display: "flex", gap: "6px", alignItems: "flex-start", marginBottom: "6px" } },
+                fields.map(function (fl) {
+                  var val = rw[fl.k] || "";
+                  if (fl.select) return h("select", { key: fl.k, value: val || fl.def, onChange: function (e) { setCell(idx, fl.k, e.target.value); }, style: Object.assign({}, input(false), { flex: fl.flex || "0 0 140px" }) },
+                    fl.select.map(function (o) { return h("option", { key: o[0], value: o[0] }, o[1]); }));
+                  if (fl.area) return h("textarea", { key: fl.k, value: val, rows: fl.rows || 2, placeholder: fl.ph || "", onChange: function (e) { setCell(idx, fl.k, e.target.value); }, style: Object.assign({}, input(true), { flex: fl.flex || 1 }) });
+                  return h("input", { key: fl.k, value: val, placeholder: fl.ph || "", onChange: function (e) { setCell(idx, fl.k, e.target.value); }, style: Object.assign({}, input(false), { flex: fl.flex || 1 }) });
+                }).concat([h("button", { key: "rm", title: "Remove", onClick: function () { removeRow(idx); }, style: Object.assign({}, miniBtn(RUST), { flex: "0 0 auto" }) }, "×")]));
+            }),
+            h("button", { onClick: addRow, style: miniBtn() }, addLabel || "+ Add"));
+        }
         function pickPhoto() {
           var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
           inp.onchange = function () {
@@ -4547,14 +4579,24 @@ class Component extends DCLogic {
             h("div", { style: { fontFamily: "'Cormorant Garamond',serif", fontSize: "22px", color: INK, marginBottom: "4px" } }, form.title),
             h("div", { style: { fontSize: "12.5px", color: MUTE, marginBottom: "16px" } },
               form.mode === "child" ? "They'll be added in the generation below."
-                : form.mode === "edit" ? "Update details. Existing photos, facts and sources are kept."
+                : form.mode === "edit" ? "Everything here is editable — rewrite any of it in your own voice. Photos and gallery images are kept."
                 : "They'll be added to this branch."),
             field("Full name", "name", { ph: "e.g. Clarence Sharp" }),
             row(field("Also known as (optional)", "known", { ph: "nickname" }), field("Dates (optional)", "dates", { ph: "e.g. 1930 — 2001, or “Living”" })),
             row(field("Where (optional)", "place", { ph: "b. Logan County, W.Va." }), field("Relationship (optional)", "rel", { ph: "e.g. Great-uncle" })),
-            field("Life / notes (optional)", "life", { area: true, rows: 4, ph: "Anything you know — where they lived, their work, family, a story in a sentence or two." }),
-            field("Add a memory (optional)", "addStory", { area: true, rows: 2, ph: "One per line. Saved as family testimony." }),
-            field("Add a source link (optional)", "addSource", { area: true, rows: 2, ph: "One per line. “Label | https://…” or just a link." }),
+            field("Life / story (optional)", "life", { area: true, rows: 6, ph: "Their story, in your words — where they lived, their work, family, who they were." }),
+            listBlock("Facts (optional)", "facts",
+              [{ k: "k", ph: "Label — e.g. Married", flex: "0 0 34%" }, { k: "v", ph: "Detail", flex: 1 }],
+              "+ Add a fact", "Short label-and-detail pairs shown on the card."),
+            listBlock("Stories & memories (optional)", "stories",
+              [{ k: "kind", select: [["family", "Family memory"], ["record", "From a record"]], def: "family", flex: "0 0 150px" }, { k: "text", ph: "The memory, in your words", area: true, flex: 1 }],
+              "+ Add a memory"),
+            listBlock("Open questions (optional)", "flags",
+              [{ k: "text", ph: "Something still uncertain about this person", area: true, flex: 1 }],
+              "+ Add an open question", "Shown as “open questions” on the card."),
+            listBlock("Sources (optional)", "sources",
+              [{ k: "label", ph: "Label", flex: 1 }, { k: "url", ph: "https://…", flex: 1 }],
+              "+ Add a source"),
             h("div", { style: { margin: "6px 0 10px" } },
               h("div", { style: lbl() }, "Status"),
               h("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap" } },
