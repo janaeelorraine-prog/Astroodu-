@@ -120,14 +120,18 @@
       var s4 = useState(null), form = s4[0], setForm = s4[1];
       var s5 = useState(false), dirty = s5[0], setDirty = s5[1];
       var s6 = useState(""), flashMsg = s6[0], setFlash = s6[1];
+      var s7 = useState(false), storageFull = s7[0], setStorageFull = s7[1];
       var flashT = useRef(null);
 
       function persist(nextEdits, nextPhotos) {
         try { localStorage.setItem(KEYS.edits, JSON.stringify(nextEdits)); } catch (x) {}
-        try { localStorage.setItem(KEYS.photos, JSON.stringify(nextPhotos || photoEdits)); } catch (x) {}
-        setDirty(true); setFlash("Saved");
+        var photosOk = true;
+        try { localStorage.setItem(KEYS.photos, JSON.stringify(nextPhotos || photoEdits)); }
+        catch (x) { photosOk = false; }
+        setStorageFull(!photosOk);
+        setDirty(true); setFlash(photosOk ? "Saved" : "Saved — download to keep photos");
         if (flashT.current) clearTimeout(flashT.current);
-        flashT.current = setTimeout(function () { setFlash(""); }, 1400);
+        flashT.current = setTimeout(function () { setFlash(""); }, photosOk ? 1400 : 3000);
       }
       function commit(nextEdits, nextPhotos) {
         nextEdits.updatedAt = Date.now(); // newest-wins when the file is reopened elsewhere
@@ -301,6 +305,10 @@
             "Changes save automatically in this browser. To keep them forever, or open the record on another device, press ",
             h("b", null, "Download updated record"), " and reopen that file."),
 
+          storageFull ? h("div", { style: { padding: "10px 20px", background: "#f6e3d8", color: "#8a3a1c", fontSize: "13px", lineHeight: 1.5, borderBottom: "1px solid " + LINE } },
+            "⚠ This browser's storage is full, so your newest photos aren't auto-saved here. They're still in the record right now — press ",
+            h("b", null, "Download updated record"), " to save them permanently before closing.") : null,
+
           h("div", { style: { display: "flex", flexWrap: "wrap", gap: "6px", padding: "12px 20px" } },
             branches.map(function (b) {
               var on = b.id === branchId;
@@ -381,9 +389,14 @@
           var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
           inp.onchange = function () {
             var file = inp.files[0]; if (!file) return;
-            var r = new FileReader();
-            r.onload = function () { var nf = Object.assign({}, form); nf.draft = Object.assign({}, d, { photo: r.result, removePhoto: false }); setForm(nf); };
-            r.readAsDataURL(file);
+            function apply(url) { var nf = Object.assign({}, form); nf.draft = Object.assign({}, d, { photo: url, removePhoto: false }); setForm(nf); }
+            if (window.__frDownscaleFile) {
+              window.__frDownscaleFile(file, 1200, 0.82).then(apply).catch(function () {
+                var r = new FileReader(); r.onload = function () { apply(r.result); }; r.readAsDataURL(file);
+              });
+            } else {
+              var r = new FileReader(); r.onload = function () { apply(r.result); }; r.readAsDataURL(file);
+            }
           };
           inp.click();
         }

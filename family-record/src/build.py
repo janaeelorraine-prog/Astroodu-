@@ -120,6 +120,23 @@ comp = comp.replace(
     _living_line,
     _living_line + '\n    if(!p.living && p.deceased) badges.push({text:"In memoriam", color:"#6b5d47", line:"#d8c9ab"});')
 
+# Make the record's own drag-onto-portrait photos downscale too (same ~5MB cap).
+_read_old = '''  readFileTo(key, file){
+    if(!file || !/^image\\//.test(file.type)) return;
+    const r = new FileReader();
+    r.onload = () => this.setDrop(key, r.result);
+    r.readAsDataURL(file);
+  }'''
+_read_new = '''  readFileTo(key, file){
+    if(!file || !/^image\\//.test(file.type)) return;
+    if(window.__frDownscaleFile){ window.__frDownscaleFile(file,1200,0.82).then(url=>this.setDrop(key,url)).catch(()=>{ const r=new FileReader(); r.onload=()=>this.setDrop(key,r.result); r.readAsDataURL(file); }); return; }
+    const r = new FileReader();
+    r.onload = () => this.setDrop(key, r.result);
+    r.readAsDataURL(file);
+  }'''
+assert _read_old in comp, "readFileTo not found — template changed"
+comp = comp.replace(_read_old, _read_new)
+
 def safe_js(s):
     # A literal </script inside inline JS closes the tag early. Neutralise it —
     # JS reads <\/script identically inside strings/regex, HTML won't close on it.

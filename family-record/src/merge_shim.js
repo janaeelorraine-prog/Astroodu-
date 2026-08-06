@@ -11,6 +11,33 @@
   var LS_EDITS  = "familyRecord.edits";
   var LS_PHOTOS = "familyRecord.photoEdits";
 
+  // Shrink an uploaded image to a web-friendly size before storing it. Phone
+  // photos are several MB — far past the browser's ~5MB storage cap — so they
+  // silently failed to save. Downscaling to ~1200px JPEG makes them ~100-200KB.
+  window.__frDownscaleFile = function (file, maxDim, quality) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//.test(file.type)) { reject(new Error("not an image")); return; }
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth || 1, h = img.naturalHeight || 1;
+          var scale = Math.min(1, (maxDim || 1200) / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          var c = document.createElement("canvas"); c.width = cw; c.height = ch;
+          var ctx = c.getContext("2d");
+          ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, cw, ch); // flatten transparency
+          ctx.drawImage(img, 0, 0, cw, ch);
+          URL.revokeObjectURL(url);
+          var out; try { out = c.toDataURL("image/jpeg", quality || 0.82); } catch (e) { out = c.toDataURL(); }
+          resolve(out);
+        } catch (e) { URL.revokeObjectURL(url); reject(e); }
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("image load failed")); };
+      img.src = url;
+    });
+  };
+
   function clone(o) {
     try { return structuredClone(o); } catch (e) { return JSON.parse(JSON.stringify(o)); }
   }

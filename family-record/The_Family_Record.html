@@ -1431,6 +1431,33 @@ window.FAMILY_PHOTO_EDITS = {};
   var LS_EDITS  = "familyRecord.edits";
   var LS_PHOTOS = "familyRecord.photoEdits";
 
+  // Shrink an uploaded image to a web-friendly size before storing it. Phone
+  // photos are several MB — far past the browser's ~5MB storage cap — so they
+  // silently failed to save. Downscaling to ~1200px JPEG makes them ~100-200KB.
+  window.__frDownscaleFile = function (file, maxDim, quality) {
+    return new Promise(function (resolve, reject) {
+      if (!file || !/^image\//.test(file.type)) { reject(new Error("not an image")); return; }
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth || 1, h = img.naturalHeight || 1;
+          var scale = Math.min(1, (maxDim || 1200) / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+          var c = document.createElement("canvas"); c.width = cw; c.height = ch;
+          var ctx = c.getContext("2d");
+          ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, cw, ch); // flatten transparency
+          ctx.drawImage(img, 0, 0, cw, ch);
+          URL.revokeObjectURL(url);
+          var out; try { out = c.toDataURL("image/jpeg", quality || 0.82); } catch (e) { out = c.toDataURL(); }
+          resolve(out);
+        } catch (e) { URL.revokeObjectURL(url); reject(e); }
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("image load failed")); };
+      img.src = url;
+    });
+  };
+
   function clone(o) {
     try { return structuredClone(o); } catch (e) { return JSON.parse(JSON.stringify(o)); }
   }
@@ -3778,6 +3805,7 @@ class Component extends DCLogic {
   }
   readFileTo(key, file){
     if(!file || !/^image\//.test(file.type)) return;
+    if(window.__frDownscaleFile){ window.__frDownscaleFile(file,1200,0.82).then(url=>this.setDrop(key,url)).catch(()=>{ const r=new FileReader(); r.onload=()=>this.setDrop(key,r.result); r.readAsDataURL(file); }); return; }
     const r = new FileReader();
     r.onload = () => this.setDrop(key, r.result);
     r.readAsDataURL(file);
@@ -4306,14 +4334,18 @@ class Component extends DCLogic {
       var s4 = useState(null), form = s4[0], setForm = s4[1];
       var s5 = useState(false), dirty = s5[0], setDirty = s5[1];
       var s6 = useState(""), flashMsg = s6[0], setFlash = s6[1];
+      var s7 = useState(false), storageFull = s7[0], setStorageFull = s7[1];
       var flashT = useRef(null);
 
       function persist(nextEdits, nextPhotos) {
         try { localStorage.setItem(KEYS.edits, JSON.stringify(nextEdits)); } catch (x) {}
-        try { localStorage.setItem(KEYS.photos, JSON.stringify(nextPhotos || photoEdits)); } catch (x) {}
-        setDirty(true); setFlash("Saved");
+        var photosOk = true;
+        try { localStorage.setItem(KEYS.photos, JSON.stringify(nextPhotos || photoEdits)); }
+        catch (x) { photosOk = false; }
+        setStorageFull(!photosOk);
+        setDirty(true); setFlash(photosOk ? "Saved" : "Saved — download to keep photos");
         if (flashT.current) clearTimeout(flashT.current);
-        flashT.current = setTimeout(function () { setFlash(""); }, 1400);
+        flashT.current = setTimeout(function () { setFlash(""); }, photosOk ? 1400 : 3000);
       }
       function commit(nextEdits, nextPhotos) {
         nextEdits.updatedAt = Date.now(); // newest-wins when the file is reopened elsewhere
@@ -4487,6 +4519,10 @@ class Component extends DCLogic {
             "Changes save automatically in this browser. To keep them forever, or open the record on another device, press ",
             h("b", null, "Download updated record"), " and reopen that file."),
 
+          storageFull ? h("div", { style: { padding: "10px 20px", background: "#f6e3d8", color: "#8a3a1c", fontSize: "13px", lineHeight: 1.5, borderBottom: "1px solid " + LINE } },
+            "⚠ This browser's storage is full, so your newest photos aren't auto-saved here. They're still in the record right now — press ",
+            h("b", null, "Download updated record"), " to save them permanently before closing.") : null,
+
           h("div", { style: { display: "flex", flexWrap: "wrap", gap: "6px", padding: "12px 20px" } },
             branches.map(function (b) {
               var on = b.id === branchId;
@@ -4567,9 +4603,14 @@ class Component extends DCLogic {
           var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*";
           inp.onchange = function () {
             var file = inp.files[0]; if (!file) return;
-            var r = new FileReader();
-            r.onload = function () { var nf = Object.assign({}, form); nf.draft = Object.assign({}, d, { photo: r.result, removePhoto: false }); setForm(nf); };
-            r.readAsDataURL(file);
+            function apply(url) { var nf = Object.assign({}, form); nf.draft = Object.assign({}, d, { photo: url, removePhoto: false }); setForm(nf); }
+            if (window.__frDownscaleFile) {
+              window.__frDownscaleFile(file, 1200, 0.82).then(apply).catch(function () {
+                var r = new FileReader(); r.onload = function () { apply(r.result); }; r.readAsDataURL(file);
+              });
+            } else {
+              var r = new FileReader(); r.onload = function () { apply(r.result); }; r.readAsDataURL(file);
+            }
           };
           inp.click();
         }
